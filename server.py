@@ -5,13 +5,13 @@ from flask import Flask, request, Response, jsonify
 app = Flask(__name__)
 
 # ========================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN Y MODELOS
 # ========================================
 
 VOICE_ID = "21adf3cda02a4aa88dc593353cc9d715"
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
-OLLAMA_MODEL = "llama3.2:3b"
+# Modelo principal ultrarrápido
+PRIMARY_MODEL = "llama-3.1-8b-instant"
 
 
 # ========================================
@@ -19,261 +19,157 @@ OLLAMA_MODEL = "llama3.2:3b"
 # ========================================
 
 SYSTEM_PROMPT = """
-Eres JARVIS, un asistente personal inteligente y futurista.
+Eres JARVIS, un asistente personal inteligente, amigable y futurista.
 
-Hablas siempre en español latino.
-
-Tu personalidad es inteligente, educada, profesional y amigable.
-
-Reglas importantes:
-- Responde directamente a lo que dice el usuario.
-- No repitas literalmente el mensaje del usuario.
-- No copies la pregunta antes de responder.
-- No actúes como un eco.
-- Mantén conversaciones naturales.
-- Recuerda el contexto reciente.
-- Llama al usuario señor de manera natural.
-- Mantén las respuestas relativamente cortas porque serán convertidas a voz.
-- Nunca digas que eres ChatGPT.
-- Tu nombre es JARVIS.
+Reglas de respuesta:
+- Hablas siempre en español latino fluido y natural.
+- Dirígete al usuario como 'señor' de forma natural y respetuosa.
+- Mantén respuestas concisas y directas (1 a 3 oraciones), ideales para sintetización de voz.
+- No repitas la pregunta del usuario ni actúes como eco.
+- Nunca te identifiques como ChatGPT ni como un modelo de lenguaje genérico. Tu nombre es JARVIS.
 """
 
-
-# ========================================
-# MEMORIA DE CONVERSACIÓN
-# ========================================
-
 conversacion = [
-    {
-        "role": "system",
-        "content": SYSTEM_PROMPT
-    }
+    {"role": "system", "content": SYSTEM_PROMPT}
 ]
 
 
 # ========================================
-# PÁGINA PRINCIPAL
-# ========================================
-
-@app.route("/", methods=["GET"])
-def inicio():
-
-    return jsonify({
-        "status": "online",
-        "server": "JARVIS",
-        "modelo": OLLAMA_MODEL
-    })
-
-
-# ========================================
-# CEREBRO DE JARVIS
+# CEREBRO OPTIMIZADO (GROQ + FALLBACK)
 # ========================================
 
 def pensar_con_jarvis(texto):
-
     global conversacion
 
-    print("")
-    print("========================================")
-    print("JARVIS ESTÁ PENSANDO")
-    print("USUARIO:", texto)
-    print("========================================")
+    print("\n" + "="*40)
+    print(f"JARVIS PROCESANDO: {texto}")
+    print("="*40)
 
-    conversacion.append({
-        "role": "user",
-        "content": texto
-    })
+    # Añadir mensaje del usuario
+    conversacion.append({"role": "user", "content": texto})
 
-    # Mantener solamente memoria reciente
-    if len(conversacion) > 12:
-        conversacion = [
-            conversacion[0]
-        ] + conversacion[-10:]
+    # Mantener memoria reciente eficiente (últimos 8 mensajes)
+    if len(conversacion) > 10:
+        conversacion = [conversacion[0]] + conversacion[-8:]
 
-    try:
-
-        response = requests.post(
-            OLLAMA_URL,
-            json={
-                "model": OLLAMA_MODEL,
+    # 1. Intentar con Groq API
+    groq_api_key = os.environ.get("GROQ_API_KEY")
+    if groq_api_key:
+        try:
+            headers = {
+                "Authorization": f"Bearer {groq_api_key}",
+                "Content-Type": "application/json"
+            }
+            body = {
+                "model": PRIMARY_MODEL,
                 "messages": conversacion,
-                "stream": False
-            },
-            timeout=120
-        )
+                "temperature": 0.6,
+                "max_tokens": 250
+            }
 
-        print("OLLAMA STATUS:", response.status_code)
+            res = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=body,
+                timeout=10
+            )
 
-        if response.status_code != 200:
+            if res.status_code == 200:
+                respuesta = res.json()["choices"][0]["message"]["content"].strip()
+                conversacion.append({"role": "assistant", "content": respuesta})
+                print(f"RESPUESTA (Groq): {respuesta}")
+                return respuesta
+            else:
+                print(f"Error Groq HTTP {res.status_code}: {res.text}")
+        except Exception as e:
+            print(f"Excepción en Groq: {e}")
 
-            print("ERROR OLLAMA:")
-            print(response.text)
+    # 2. Respaldo opcional con Gemini API (Si configuras GEMINI_API_KEY)
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+            body = {"contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\nUsuario: {texto}"}]}]}
+            res = requests.post(url, json=body, timeout=10)
+            if res.status_code == 200:
+                respuesta = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                conversacion.append({"role": "assistant", "content": respuesta})
+                print(f"RESPUESTA (Gemini Fallback): {respuesta}")
+                return respuesta
+        except Exception as e:
+            print(f"Excepción en Gemini: {e}")
 
-            return "Lo siento, señor. Tengo un problema con mi sistema de inteligencia."
-
-        data = response.json()
-
-        respuesta = data.get(
-            "message",
-            {}
-        ).get(
-            "content",
-            ""
-        ).strip()
-
-        print("RESPUESTA DE OLLAMA:")
-        print(respuesta)
-
-        if not respuesta:
-
-            respuesta = "Lo siento, señor. No he podido generar una respuesta."
-
-        conversacion.append({
-            "role": "assistant",
-            "content": respuesta
-        })
-
-        return respuesta
-
-    except Exception as e:
-
-        print("ERROR CON OLLAMA:")
-        print(str(e))
-
-        return "No puedo conectar con mi sistema de inteligencia en este momento, señor."
+    # Respuesta de contingencia si no hay claves configuradas o fallan las APIs
+    return "Lo siento, señor. Mis sistemas de inteligencia no están respondiendo correctamente en este momento."
 
 
 # ========================================
-# TTS + INTELIGENCIA
+# ENDPOINTS Y RUTAS HTTP
 # ========================================
+
+@app.route("/", methods=["GET"])
+def ping():
+    return jsonify({
+        "status": "online",
+        "system": "JARVIS OS",
+        "engine": "Groq + Fish Audio"
+    }), 200
+
 
 @app.route("/tts", methods=["POST"])
 def tts():
+    # Detección flexible de API Key de Fish Audio
+    fish_key = os.environ.get("FISH_API_KEY") or os.environ.get("FISH_AUDIO_API_KEY")
+    
+    if not fish_key:
+        print("ERROR: Clave de Fish Audio no encontrada.")
+        return jsonify({"error": "Falta la variable FISH_API_KEY en Railway."}), 500
 
-    print("")
-    print("========================================")
-    print("NUEVA PETICIÓN PARA JARVIS")
-    print("========================================")
-
-    # Obtener API Key
-    fish_api_key = os.environ.get("FISH_API_KEY")
-
-    print("API KEY PRESENTE:", bool(fish_api_key))
-
-    if not fish_api_key:
-
-        return jsonify({
-            "error": "Falta FISH_API_KEY"
-        }), 500
-
-
-    # Obtener mensaje enviado desde Android
     data = request.get_json(silent=True) or {}
-
     text = data.get("text", "").strip()
 
-    print("TEXTO RECIBIDO:", text)
-
     if not text:
+        return jsonify({"error": "No se recibió texto."}), 400
 
-        return jsonify({
-            "error": "Falta el texto"
-        }), 400
+    # Obtener respuesta del cerebro
+    respuesta_texto = pensar_con_jarvis(text)
 
-
-    # ========================================
-    # JARVIS PIENSA LA RESPUESTA
-    # ========================================
-
-    respuesta_jarvis = pensar_con_jarvis(text)
-
-
-    print("")
-    print("RESPUESTA FINAL DE JARVIS:")
-    print(respuesta_jarvis)
-
-
-    # ========================================
-    # GENERAR VOZ CON FISH AUDIO
-    # ========================================
-
+    # Generar audio con Fish Audio
     headers = {
-        "Authorization": f"Bearer {fish_api_key}",
-        "Content-Type": "application/json",
-        "model": "s2.1-pro-free"
+        "Authorization": f"Bearer {fish_key}",
+        "Content-Type": "application/json"
     }
 
     body = {
-        "text": respuesta_jarvis,
+        "text": respuesta_texto,
         "reference_id": VOICE_ID,
-        "format": "mp3"
+        "format": "mp3",
+        "latency": "normal"
     }
 
-    print("")
-    print("GENERANDO VOZ DE JARVIS...")
-
-
     try:
-
         response = requests.post(
             "https://api.fish.audio/v1/tts",
             headers=headers,
             json=body,
-            timeout=60
+            timeout=30
         )
 
-        print("FISH AUDIO STATUS:", response.status_code)
-
         if response.status_code != 200:
-
-            print("ERROR DE FISH AUDIO:")
-            print(response.text[:500])
-
+            print(f"Error Fish Audio [{response.status_code}]: {response.text}")
             return jsonify({
-                "error": "Error de Fish Audio",
+                "error": "Error al sintetizar voz con Fish Audio",
                 "details": response.text
             }), response.status_code
 
-
-        print("AUDIO RECIBIDO CORRECTAMENTE")
-        print("TAMAÑO:", len(response.content), "bytes")
-        print("========================================")
-
-
-        return Response(
-            response.content,
-            mimetype="audio/mpeg"
-        )
-
+        print(f"Audio generado con éxito ({len(response.content)} bytes)")
+        return Response(response.content, mimetype="audio/mpeg")
 
     except Exception as e:
+        print(f"Error interno en sintetizador: {e}")
+        return jsonify({"error": "Error en el servidor de voz", "details": str(e)}), 500
 
-        print("ERROR INTERNO:")
-        print(str(e))
-
-        return jsonify({
-            "error": "Error interno del servidor",
-            "details": str(e)
-        }), 500
-
-
-# ========================================
-# INICIAR SERVIDOR
-# ========================================
 
 if __name__ == "__main__":
-
-    port = int(os.environ.get("PORT", 5000))
-
-    print("========================================")
-    print("JARVIS SERVER INICIANDO")
-    print("========================================")
-    print("Puerto:", port)
-    print("Modelo IA:", OLLAMA_MODEL)
-    print("Fish Audio disponible:", bool(os.environ.get("FISH_API_KEY")))
-    print("========================================")
-
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
