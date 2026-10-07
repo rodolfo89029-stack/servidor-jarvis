@@ -1,5 +1,4 @@
 import os
-import subprocess
 import requests
 from flask import Flask, request, Response, jsonify, send_file
 
@@ -7,8 +6,9 @@ app = Flask(__name__)
 
 PRIMARY_MODEL = "llama-3.1-8b-instant"
 
-MODEL_FILE = "jarvis-medium.onnx"
-MODEL_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/jarvis/medium/es_ES-jarvis-medium.onnx"
+# Reemplaza con tu API Key y tu Model ID de Fish Audio
+FISH_AUDIO_API_KEY = os.environ.get("FISH_AUDIO_API_KEY", "")
+FISH_MODEL_ID = os.environ.get("FISH_MODEL_ID", "")  # ID de la voz de JARVIS en Fish Audio
 
 SYSTEM_PROMPT = """
 Eres JARVIS, el asistente personal inteligente, amigable y futurista de Iron Man.
@@ -23,19 +23,6 @@ Reglas de respuesta:
 conversacion = [
     {"role": "system", "content": SYSTEM_PROMPT}
 ]
-
-def descargar_modelo_si_no_existe():
-    if not os.path.exists(MODEL_FILE):
-        print(f"Descargando {MODEL_FILE}...")
-        res = requests.get(MODEL_URL, stream=True)
-        if res.status_code == 200:
-            with open(MODEL_FILE, "wb") as f:
-                for chunk in res.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            print("Descarga completada.")
-
-descargar_modelo_si_no_existe()
-
 
 def pensar_con_jarvis(texto):
     global conversacion
@@ -74,10 +61,9 @@ def pensar_con_jarvis(texto):
         except Exception as e:
             print(f"Error Groq: {e}")
 
-    return "Lo siento, señor. Mis sistemas no están respondiendo correctamente."
+    return "Lo siento, señor. Mis sistemas de inteligencia no están respondiendo correctamente."
 
 
-# Esta ruta ahora abre la interfaz gráfica index.html
 @app.route("/", methods=["GET"])
 def index():
     return send_file("index.html")
@@ -93,17 +79,29 @@ def tts():
 
     respuesta_texto = pensar_con_jarvis(text)
 
-    output_file = "output.wav"
-    cmd = f'echo "{respuesta_texto}" | piper --model {MODEL_FILE} --output_file {output_file}'
-    
-    try:
-        subprocess.run(cmd, shell=True, check=True)
-        with open(output_file, "rb") as f:
-            audio_bytes = f.read()
-        return Response(audio_bytes, mimetype="audio/wav")
-    except Exception as e:
-        print(f"Error Piper TTS: {e}")
-        return jsonify({"error": "Error al sintetizar la voz", "details": str(e)}), 500
+    # Si tienes configurada la API de Fish Audio
+    if FISH_AUDIO_API_KEY and FISH_MODEL_ID:
+        try:
+            url = "https://api.fish.audio/v1/tts"
+            headers = {
+                "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "text": respuesta_texto,
+                "reference_id": FISH_MODEL_ID,
+                "format": "mp3"
+            }
+
+            res = requests.post(url, json=payload, headers=headers, timeout=15)
+            if res.status_code == 200:
+                return Response(res.content, mimetype="audio/mpeg")
+            else:
+                print(f"Error Fish Audio status: {res.status_code} - {res.text}")
+        except Exception as e:
+            print(f"Error petición Fish Audio: {e}")
+
+    return jsonify({"error": "No se pudo generar el audio con Fish Audio. Revisa las variables en Railway."}), 500
 
 
 if __name__ == "__main__":
