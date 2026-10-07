@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS System</title>
+    <style>
+        body {
+            background-color: #050b14;
+            color: #00f0ff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .arc-reactor {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            border: 4px solid #00f0ff;
+            box-shadow: 0 0 20px #00f0ff, inset 0 0 20px #00f0ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 25px;
+            animation: pulse 2s infinite ease-in-out;
+        }
+
+        .core {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 0 30px #00f0ff, 0 0 50px #00f0ff;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 20px #00f0ff, inset 0 0 20px #00f0ff; }
+            50% { transform: scale(1.05); box-shadow: 0 0 40px #00f0ff, inset 0 0 30px #00f0ff; }
+            100% { transform: scale(1); box-shadow: 0 0 20px #00f0ff, inset 0 0 20px #00f0ff; }
+        }
+
+        .chat-box {
+            width: 90%;
+            max-width: 450px;
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px 15px;
+            border-radius: 20px;
+            border: 1px solid #00f0ff;
+            background: rgba(0, 240, 255, 0.05);
+            color: #fff;
+            outline: none;
+        }
+
+        button {
+            padding: 12px 20px;
+            border-radius: 20px;
+            border: none;
+            background: #00f0ff;
+            color: #050b14;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        #status {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #88aaff;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="arc-reactor">
+        <div class="core"></div>
+    </div>
+
+    <h2>SISTEMA JARVIS</h2>
+
+    <div class="chat-box">
+        <input type="text" id="userInput" placeholder="Escriba su mensaje, señor..." onkeydown="if(event.key === 'Enter') enviarComando()">
+        <button onclick="enviarComando()">Enviar</button>
+    </div>
+
+    <p id="status">Esperando órdenes...</p>
+
+    <script>
+        async function enviarComando() {
+            const input = document.getElementById('userInput');
+            const status = document.getElementById('status');
+            const texto = input.value.trim();
+
+            if (!texto) return;
+
+            status.innerText = "Procesando...";
+            input.value = "";
+
+            try {
+                const response = await fetch('/tts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: texto })
+                });
+
+                if (!response.ok) throw new Error("Error en el servidor");
+
+                status.innerText = "Sintetizando voz...";
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+
+                status.innerText = "Hablando...";
+                audio.play();
+
+                audio.onended = () => {
+                    status.innerText = "Esperando órdenes...";
+                };
+
+            } catch (error) {
+                console.error(error);
+                status.innerText = "Error al conectar con JARVIS.";
+            }
+        }
+    </script>
+</body>
+</html>
