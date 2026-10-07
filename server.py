@@ -7,6 +7,10 @@ app = Flask(__name__)
 
 PRIMARY_MODEL = "llama-3.1-8b-instant"
 
+# Nombre del archivo local y URL de descarga desde Hugging Face
+MODEL_FILE = "jarvis-medium.onnx"
+MODEL_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/jarvis/medium/es_ES-jarvis-medium.onnx"
+
 SYSTEM_PROMPT = """
 Eres JARVIS, el asistente personal inteligente, amigable y futurista de Iron Man.
 
@@ -20,6 +24,23 @@ Reglas de respuesta:
 conversacion = [
     {"role": "system", "content": SYSTEM_PROMPT}
 ]
+
+def descargar_modelo_si_no_existe():
+    """Descarga el modelo ONNX en caso de no estar presente en el servidor."""
+    if not os.path.exists(MODEL_FILE):
+        print(f"Descargando {MODEL_FILE} desde Hugging Face...")
+        res = requests.get(MODEL_URL, stream=True)
+        if res.status_code == 200:
+            with open(MODEL_FILE, "wb") as f:
+                for chunk in res.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            print("Descarga del modelo completada exitosamente.")
+        else:
+            print(f"Error al descargar el modelo. Código: {res.status_code}")
+
+# Ejecutar la descarga previa
+descargar_modelo_si_no_existe()
+
 
 def pensar_con_jarvis(texto):
     global conversacion
@@ -76,9 +97,8 @@ def tts():
 
     respuesta_texto = pensar_con_jarvis(text)
 
-    # Generar audio WAV usando el modelo de JARVIS cargado en GitHub
     output_file = "output.wav"
-    cmd = f'echo "{respuesta_texto}" | piper --model jarvis-medium.onnx --output_file {output_file}'
+    cmd = f'echo "{respuesta_texto}" | piper --model {MODEL_FILE} --output_file {output_file}'
     
     try:
         subprocess.run(cmd, shell=True, check=True)
