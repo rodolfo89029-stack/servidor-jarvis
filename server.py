@@ -7,8 +7,8 @@ app = Flask(__name__)
 PRIMARY_MODEL = "llama-3.1-8b-instant"
 
 # Reemplaza con tu API Key y tu Model ID de Fish Audio
-FISH_AUDIO_API_KEY = os.environ.get("FISH_AUDIO_API_KEY", "")
-FISH_MODEL_ID = os.environ.get("FISH_MODEL_ID", "")  # ID de la voz de JARVIS en Fish Audio
+FISH_AUDIO_API_KEY = os.environ.get("sk-fish-i__1odWiayUHBgLsHz8DFA-O97NrRUvyLoCWw2W9IWU", "")
+FISH_MODEL_ID = os.environ.get("a728b3e3bda3425799f0555792b463ff", "")  # ID de la voz de JARVIS en Fish Audio
 
 SYSTEM_PROMPT = """
 Eres JARVIS, el asistente personal inteligente, amigable y futurista de Iron Man.
