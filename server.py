@@ -1,13 +1,12 @@
 import os
 import subprocess
 import requests
-from flask import Flask, request, Response, jsonify
+from flask import Flask, request, Response, jsonify, send_file
 
 app = Flask(__name__)
 
 PRIMARY_MODEL = "llama-3.1-8b-instant"
 
-# Nombre del archivo local y URL de descarga desde Hugging Face
 MODEL_FILE = "jarvis-medium.onnx"
 MODEL_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/jarvis/medium/es_ES-jarvis-medium.onnx"
 
@@ -26,19 +25,15 @@ conversacion = [
 ]
 
 def descargar_modelo_si_no_existe():
-    """Descarga el modelo ONNX en caso de no estar presente en el servidor."""
     if not os.path.exists(MODEL_FILE):
-        print(f"Descargando {MODEL_FILE} desde Hugging Face...")
+        print(f"Descargando {MODEL_FILE}...")
         res = requests.get(MODEL_URL, stream=True)
         if res.status_code == 200:
             with open(MODEL_FILE, "wb") as f:
                 for chunk in res.iter_content(chunk_size=8192):
                     f.write(chunk)
-            print("Descarga del modelo completada exitosamente.")
-        else:
-            print(f"Error al descargar el modelo. Código: {res.status_code}")
+            print("Descarga completada.")
 
-# Ejecutar la descarga previa
 descargar_modelo_si_no_existe()
 
 
@@ -82,9 +77,10 @@ def pensar_con_jarvis(texto):
     return "Lo siento, señor. Mis sistemas no están respondiendo correctamente."
 
 
+# Esta ruta ahora abre la interfaz gráfica index.html
 @app.route("/", methods=["GET"])
-def ping():
-    return jsonify({"status": "online", "system": "JARVIS OS + Piper TTS"}), 200
+def index():
+    return send_file("index.html")
 
 
 @app.route("/tts", methods=["POST"])
@@ -107,7 +103,7 @@ def tts():
         return Response(audio_bytes, mimetype="audio/wav")
     except Exception as e:
         print(f"Error Piper TTS: {e}")
-        return jsonify({"error": "Error al sintetizar la voz de JARVIS", "details": str(e)}), 500
+        return jsonify({"error": "Error al sintetizar la voz", "details": str(e)}), 500
 
 
 if __name__ == "__main__":
